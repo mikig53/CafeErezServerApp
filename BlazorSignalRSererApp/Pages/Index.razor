@@ -1,0 +1,293 @@
+﻿@page "/"
+@using SmsService
+@using BetModels.Interfaces;
+@using BetModels.Models;
+@using BlazorSignalRSererApp.Data.Text
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Globalization
+@inject NavigationManager navManager
+@inject IJSRuntime jsRuntime
+@inject ITextService textGenerationService
+@inject UpdateFormService updateFormService
+@implements IAsyncDisposable
+
+<PageTitle>Index</PageTitle>
+<style>
+    .message {
+        color: blue; /* Default color for messages */
+    }
+
+    .important {
+        color: red; /* Color for important messages */
+        font-weight: bold; /* Add additional styles if needed */
+    }
+</style>
+<!-- Your Blazor component HTML -->
+<p id="textMessage" class="message"></p>
+<MudPaper Height="285px" Width="60%">
+    <MudContainer MaxWidth="MaxWidth.Small">
+        <MudPaper Height="285px" Width="90%" Square="true" Class="mud-theme-light">
+            <MudGrid class="table-container" Justify="Justify.Center">
+                <h3>טפסים למשלוח</h3>
+                <MudIconButton Icon="@Icons.Material.Filled.GroupRemove" OnClick="@ClearForms" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"></MudIconButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="RestoreForms" >שיחזור טפסים יומי</MudButton>
+                <MudTable Items="@receivedForms"  class="content-area">
+
+                    <RowTemplate>
+                        <MudGrid>
+                            <MudItem xs="12">
+                              <MudStack Row=true>
+                                <MudIconButton OnClick="@(() => DeleteSentForm(context))" Icon="@Icons.Material.Filled.Delete" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" />
+                                <MudCheckBox T="bool" Checked="@context.IsSent" CheckedChanged="@(c=>HandleCheckedChanged(@context, c))"
+                                     Color="Color.Primary" CheckedIcon="@Icons.Material.Filled.Bookmark" UncheckedIcon="@Icons.Material.Filled.BookmarkBorder">נשלח
+                                </MudCheckBox>
+                               
+                                <MudText Typo="Typo.h6" Color="Color.Warning">@context.ReceivedDate</MudText>
+                              </MudStack>
+                                <MudStack Row=true Style="background-color:burlywood">
+                                    <MudTextField @bind-Value="@context.BetAmount" Adornment="Adornment.Start" AdornmentText="₪"
+                                           Label=":סכום הימור" Variant="Variant.Text" ReadOnly="true"
+                                                  Style="color:blueviolet;  font-size:medium; line-height: 0em; overflow: hidden;">
+                                    </MudTextField>
+                                    <MudTextField @bind-Value="@context.TelephoneNumber" 
+                                                  Label=":טלפון" Variant="Variant.Text" ReadOnly="true"
+                                                  Style="color:blueviolet;  font-size:medium; line-height: 0em; overflow: hidden;">
+                                    </MudTextField>
+                                    <MudTextField @bind-Value="@context.LastName" Variant="Variant.Text" ReadOnly="true"
+                                                  Style="color:blueviolet;  font-size:medium; line-height: 0em; overflow: hidden;">
+                                    </MudTextField>
+                                    <MudTextField Label=":שם" @bind-Value="@context.FirstName" Variant="Variant.Text" ReadOnly="true"
+                                                  Style="color:blueviolet;  font-size:medium; line-height: 0em; overflow: hidden;">
+                                    </MudTextField>
+                                     <div style="display: flex; flex-direction: column; align-items: center;">
+                                        @if (context.IsSent)
+                                        {
+                                            <div class="sent-stamp">נשלח</div>
+                                        }
+                                        <p style="font-size: small; margin: 4px 0; color: gray;">@context.ReceivedDate</p>
+                                    </div>
+                                </MudStack>
+                                
+                                <MudTable Items="@context.Bets.OrderByDescending(tag => tag.Single).ToList()" Striped="false">
+                                    <RowTemplate Context="tag">
+                                        <MudTd Style="line-height: 1em; overflow: hidden; border-bottom-color:brown; background-color:beige;">
+                                               <MudGrid Row="true" Style="font-size:small">
+                                                <MudItem xs="3" Alignment="AlignStart">
+                                                    @if(tag.Single)
+                                                    {
+                                                        <span>₪ @tag.SingleAmount</span>
+                                                        <span style="font-size:small; text-align:left; color:black">סינגל</span>
+                                                    }
+                                                    
+                                                </MudItem>
+                                                    <MudItem xs="4" Alignment="AlignEnd">
+                                                    <span style="@GetButtonColor("2", tag)">|2|</span>
+                                                    <span style="@GetButtonColor("X", tag)">|X|</span>
+                                                    <span style="@GetButtonColor("1", tag)">|1|</span> ניחוש</MudItem>
+                                                    <MudItem xs="5" Alignment="AlignStart">
+                                                    <p style="font-size:small; text-align:left; color:blue">@tag.GameNumber מס. משחק</p>
+                                                    </MudItem>
+                                                    
+                                               </MudGrid>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                                <p></p>
+                                <p></p>
+                            </MudItem>
+                        </MudGrid>
+                    </RowTemplate>
+                </MudTable>
+            </MudGrid>
+        </MudPaper>
+    </MudContainer>
+    
+</MudPaper>
+
+<style>
+    .sent-stamp {
+        display: inline-block;
+        background-color: green;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+
+       
+</style>
+
+@code {
+    private HubConnection? hubConnection;
+    private Form _form;
+    private List<Form> receivedForms = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Create a SignalR hub connection
+        hubConnection = new HubConnectionBuilder()
+           .WithUrl("http://localhost:5011/formhub")
+          .WithAutomaticReconnect()
+           .Build();
+        hubConnection.Reconnecting += async (exception) =>
+        {
+            Console.WriteLine("Reconnecting event triggered");
+            await jsRuntime.InvokeAsync<object>("showAlertWithSpeech", "...התנתקת מנסה להתחבר", true);
+        };
+
+        hubConnection.Reconnected += async (connectionId) =>
+        {
+            Console.WriteLine("Reconnected event triggered");
+            await jsRuntime.InvokeAsync<object>("showAlertWithSpeech", ".... מנסה להתחבר", true);
+        };
+        // Register a handler for the FormReceived event
+        hubConnection.On<Form>("ReceiveForm", async form =>
+        {
+            // Update the _form field with the received form
+            _form = form;
+            _form.ReceivedDate = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+            receivedForms.Add(_form);
+            // Save it in text file
+            await textGenerationService.SaveAsTextAsync(_form);
+            // Update the UI
+            await InvokeAsync(StateHasChanged);
+            await jsRuntime.InvokeAsync<object>("showAlertWithSpeech", "התקבל טופס חדש למשלוח", false);
+        });
+        try
+        {
+            // Start the hub connection
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+            // Handle the exception and display an error message
+            await jsRuntime.InvokeAsync<object>("showAlertWithSpeech", "Error: השרת כבוי", true);
+        }
+
+    }
+
+    public bool IsConnected => hubConnection?.State == HubConnectionState.Connected;
+
+    private async Task Send()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("SendMessage", _form);
+        }
+    }
+
+    private int selectedRowIndex = -1;
+
+
+
+    private void DeleteSentForm(Form form)
+    {
+        // Find the index of the item with the specified ID
+        int index = receivedForms.FindIndex(bet => bet.ReceivedDate == form.ReceivedDate && bet.TelephoneNumber == form.TelephoneNumber);
+        // If the item was found, remove it from the list
+        if (index >= 0)
+        {
+            receivedForms.RemoveAt(index);
+        }
+        StateHasChanged();
+    }
+
+    private async Task RestoreForms()
+    {
+        receivedForms = await textGenerationService.ReadAsTextAsync();
+        StateHasChanged();
+    }
+    private void ClearForms()
+    {
+        receivedForms.Clear();
+        StateHasChanged();
+    }
+
+    private async Task HandleCheckedChanged(Form context, bool isChecked)
+    {
+
+        context.IsSent = isChecked;
+        await UpdateIsSentAsync(context.ReceivedDate, context.FirstName, context.LastName);
+        SendSms(context);
+
+    }
+    private async Task UpdateIsSentAsync(string receivedDate, string firstName, string lastName)
+    {
+        try
+        {
+            await updateFormService.UpdateIsSentAsync(receivedDate, firstName, lastName);
+        }
+        catch (Exception ex)
+        {
+            // Handle any exceptions that may occur during the update process
+            // Display an error message or perform appropriate error handling
+        }
+    }
+    private String GetButtonColor(string winner, Bet tag)
+    {
+
+        switch (winner)
+        {
+            case "1":
+                if (tag.BetValue == "1")
+                {
+                    return @"background-color: coral; ";
+                }
+                else
+                {
+                    return @"background-color: lavender;";
+                }
+                break;
+            case "X":
+                if (tag.BetValue == "X")
+                {
+                    return @"background-color: coral;";
+                }
+                else
+                {
+                    return @"background-color: lavender;";
+                }
+                break;
+            case "2":
+                if (tag.BetValue == "2")
+                {
+                    return @"background-color: coral;";
+                }
+                else
+                {
+                    return @"background-color: lavender;";
+                }
+                break;
+            default:
+                return @"background-color: lavender;";
+                break;
+        }
+
+
+    }
+   
+    public async Task SendSms(Form context)
+    {
+
+        // Remove the first zero and add the +972 prefix to the phone number
+        string phoneNumber = "+972" + context.TelephoneNumber.TrimStart('0');
+        // Assuming context.ReceivedDate is in the format "dd/MM/yyyy HH:mm:ss"
+        string receivedDateString = context.ReceivedDate;
+         // Remove the seconds portion
+        string formattedDate = receivedDateString.Substring(0, receivedDateString.LastIndexOf(':'));
+        string message = " :הטופס שלך מתאריך"  + formattedDate + " נשלח ";
+        // Create an instance of SmsToClient and send the SMS
+        var smsClient = new SmsToClient(phoneNumber, message);
+        await smsClient.SendSmsAsync();
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+
+}
