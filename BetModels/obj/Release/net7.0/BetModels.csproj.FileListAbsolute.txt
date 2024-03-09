@@ -1,0 +1,12 @@
+D:\source\repos\MauiCafeErezApp\BetModels\bin\Release\net7.0\BetModels.deps.json
+D:\source\repos\MauiCafeErezApp\BetModels\bin\Release\net7.0\BetModels.dll
+D:\source\repos\MauiCafeErezApp\BetModels\bin\Release\net7.0\BetModels.pdb
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.csproj.AssemblyReference.cache
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.GeneratedMSBuildEditorConfig.editorconfig
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.AssemblyInfoInputs.cache
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.AssemblyInfo.cs
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.csproj.CoreCompileInputs.cache
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.dll
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\refint\BetModels.dll
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\BetModels.pdb
+D:\source\repos\MauiCafeErezApp\BetModels\obj\Release\net7.0\ref\BetModels.dll
